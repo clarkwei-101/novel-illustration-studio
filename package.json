@@ -1,0 +1,39 @@
+{
+  "name": "novel-illustration-studio",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agent-driven novel illustration workflow: parse novels, extract characters/scenes/relationships, and assemble Seedance 2.0 prompts.",
+  "scripts": {
+    "dev": "next dev -p 3111",
+    "build": "next build",
+    "start": "next start -p 3111",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx tests/run.ts",
+    "mcp": "tsx src/mcp/server.ts"
+  },
+  "dependencies": {
+    "@vercel/blob": "2.8.2",
+    "jszip": "3.10.2",
+    "mammoth": "1.13.0",
+    "next": "^15.5.29",
+    "pdf-parse": "2.4.5",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@tailwindcss/postcss": "4.1.14",
+    "@types/node": "24.7.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "postcss": "8.5.6",
+    "tailwindcss": "4.1.14",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
