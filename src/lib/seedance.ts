@@ -344,12 +344,16 @@ export interface PromptAssemblyInput {
   action?: string;
   /** Transition / effect notes. */
   transition?: string;
+  /** Overrides `shot.durationSec` when the agent wants a different length. */
+  durationSec?: number;
+  /** Overrides `shot.mood` when the agent wants a different mood line. */
+  mood?: string;
 }
 
 /** Assemble a full Seedance prompt from structured parts. */
 export function assemblePrompt(input: PromptAssemblyInput): string {
   const { shot } = input;
-  const duration = shot.durationSec ?? 10;
+  const duration = input.durationSec ?? shot.durationSec ?? 10;
   const parts: string[] = [];
 
   // 1) Reference declarations with explicit purposes.
@@ -402,10 +406,17 @@ export function assemblePrompt(input: PromptAssemblyInput): string {
 
   // 9) Style + mood.
   const style = input.style ?? shot.style ?? "电影级质感，胶片颗粒，浅景深";
-  const mood = shot.mood ? `，${shot.mood}` : "";
+  const moodText = input.mood ?? shot.mood;
+  const mood = moodText ? `，${moodText}` : "";
   parts.push(`${style}${mood}`);
 
-  return parts.filter(Boolean).join("，").replace(/，+/g, "，");
+  return parts
+    .filter(Boolean)
+    .join("，")
+    .replace(/，+/g, "，")
+    // A segment ending in a full stop followed by the separator reads as a
+    // broken sentence; drop the separator so "…画面。" stays intact.
+    .replace(/。，/g, "。");
 }
 
 /** Prompt templates distilled from the skill's scenario catalogue. */

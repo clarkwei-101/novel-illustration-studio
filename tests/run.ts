@@ -739,6 +739,50 @@ async function run(): Promise<void> {
     check("the assembler produces a prompt", built.prompt.length > 40);
     check("the assembled prompt validates", built.validation.ok, built.validation.errors.join(" | "));
 
+    // ── assembler: the `parts` overrides must not be silently dropped
+    group("Seedance assembler — parts overrides are honoured");
+
+    const overrideShot: Shot = {
+      id: "shot-override",
+      novelId: "n1",
+      index: 0,
+      title: "清风楼夜宴",
+      chapterIndex: 1,
+      excerpt: "清风楼的三层，灯笼一层层挂下来。",
+      entityIds: [],
+      durationSec: 10,
+    };
+    const overridden = assemblePrompt({
+      shot: overrideShot,
+      subject: "沈墨站在清风楼三层木梯口",
+      scene: "清风楼三层内厅，层层红灯笼垂落",
+      action: "沈墨缓步登上木梯，停在雅间门前",
+      camera: "缓慢推近，中景跟拍",
+      style: "电影级质感，胶片颗粒，浅景深",
+      durationSec: 6,
+      mood: "紧张、悬疑",
+    });
+    check(
+      "parts.durationSec overrides shot.durationSec",
+      overridden.includes("6秒画面") && !overridden.includes("10秒画面"),
+      overridden,
+    );
+    check(
+      "parts.mood is appended to the style line",
+      overridden.includes("电影级质感，胶片颗粒，浅景深，紧张、悬疑"),
+      overridden,
+    );
+    check(
+      "no stray '。' before a separator",
+      !overridden.includes("。，"),
+      overridden,
+    );
+    check(
+      "the timeline sentence keeps its full stop",
+      overridden.includes("6秒画面。") && !overridden.includes("6秒画面。，"),
+      overridden,
+    );
+
     const saved = await upsertShot(record.novel.id, {
       ...shot,
       prompt: built.prompt,

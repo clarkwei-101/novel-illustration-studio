@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getNovel, upsertShot } from "@/lib/repository";
 import { buildShotPrompt } from "@/lib/repository";
+import type { PromptAssemblyInput } from "@/lib/seedance";
 import type { Shot } from "@/lib/types";
 import { randomUUID } from "node:crypto";
 
@@ -34,7 +35,7 @@ export async function POST(
   const { id } = await params;
   try {
     const body = (await request.json()) as Partial<Shot> & {
-      parts?: Omit<Parameters<typeof buildShotPrompt>[1], never>;
+      parts?: Omit<PromptAssemblyInput, "shot">;
       prompt?: string;
     };
 
@@ -64,6 +65,11 @@ export async function POST(
     };
 
     if (!shot.prompt) {
+      // `parts` may override fields the agent set on the shot body; keep the
+      // stored shot in sync with the prompt that was actually assembled.
+      if (body.parts?.durationSec !== undefined) shot.durationSec = body.parts.durationSec;
+      if (body.parts?.mood !== undefined) shot.mood = body.parts.mood;
+      if (body.parts?.style !== undefined) shot.style = body.parts.style;
       const built = buildShotPrompt(shot, body.parts);
       shot.prompt = built.prompt;
       shot.validation = built.validation;
