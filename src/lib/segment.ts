@@ -7,9 +7,17 @@ import type { Chapter } from "./types";
 
 const CN_NUM = "〇零一二三四五六七八九十百千万两";
 
-/** Matches 第N章 / 第N节 / 第N回 / 第N卷 / 第N篇 and their Chinese numerals. */
+/**
+ * Matches 第N章 / 第N节 / 第N回 / 第N卷 / 第N篇 and their Chinese numerals.
+ *
+ * The trailing boundary matters. Without it, a prose line like
+ * "第四回中既將薛家母子在榮府內寄居等事略已表明" — which is a sentence
+ * talking ABOUT a chapter, not a chapter title — is read as a heading and
+ * truncates the real chapter into a 91-character stub. A heading must be
+ * followed by a separator or by nothing at all.
+ */
 const CN_HEADING = new RegExp(
-  `^\\s*(?:第\\s*[0-9０-９${CN_NUM}]+\\s*[章回节卷篇幕折]|Chapter\\s+\\d+|CHAPTER\\s+\\d+|卷[0-9０-９${CN_NUM}]+|楔\\s*子|序章|序言|序|引子|尾声|尾聲|后记|後記|番外)`,
+  `^\\s*(?:第\\s*[0-9０-９${CN_NUM}]+\\s*[章回节卷篇幕折](?![${CN_NUM}一-鿿])|Chapter\\s+\\d+|CHAPTER\\s+\\d+|卷[0-9０-９${CN_NUM}]+(?![${CN_NUM}])|楔\\s*子|序章|序言|序(?![${CN_NUM}一-鿿])|引子|尾声|尾聲|后记|後記|番外)`,
 );
 
 /** Matches a markdown ATX heading. */

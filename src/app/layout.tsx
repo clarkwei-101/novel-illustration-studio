@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Novel Illustration Studio",
   description:
     "Agent-driven novel illustration workflow: parse a book, dissect its characters, scenes and relationships, and assemble Seedance 2.0 prompts.",
+  icons: { icon: "/favicon.svg" },
 };
 
 export default function RootLayout({

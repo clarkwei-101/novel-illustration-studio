@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "./site-chrome";
-import type { Analysis, Entity, Scene, Shot } from "@/lib/types";
+import type {
+  Analysis,
+  Entity,
+  KeywordCategory,
+  Scene,
+  Shot,
+} from "@/lib/types";
 
 interface Props {
   novelId: string;
@@ -392,6 +398,25 @@ function GraphPanel({ analysis }: { analysis: Analysis }) {
 
   const maxWeight = Math.max(1, ...edges.map((e) => e.weight));
 
+  // The keyword list is filed into buckets by what an illustrator does
+  // with the word, so the panel shows them as groups rather than as one
+  // undifferentiated cloud.
+  const keywordGroups = useMemo(() => {
+    const order: { key: KeywordCategory; label: string }[] = [
+      { key: "object", label: "Objects" },
+      { key: "place", label: "Places" },
+      { key: "nature", label: "Nature" },
+      { key: "concept", label: "Concepts" },
+    ];
+    return order
+      .map(({ key, label }) => ({
+        key,
+        label,
+        items: analysis.keywords.filter((k) => k.category === key).slice(0, 12),
+      }))
+      .filter((g) => g.items.length > 0);
+  }, [analysis]);
+
   if (edges.length === 0) {
     return (
       <div className="panel p-10 text-center text-sm text-mist-400">
@@ -509,17 +534,29 @@ function GraphPanel({ analysis }: { analysis: Analysis }) {
             ))}
         </div>
 
-        <h3 className="mt-7 text-sm font-medium text-mist-100">Keywords</h3>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {analysis.keywords.slice(0, 30).map((k) => (
-            <span key={k.term} className="tag">
-              {k.term}
-              <span className="font-mono text-[10px] text-mist-400">
-                {k.count}
-              </span>
-            </span>
-          ))}
-        </div>
+        <h3 className="mt-7 text-sm font-medium text-mist-100">
+          Keywords
+          <span className="ml-2 text-[11px] font-normal text-mist-400">
+            grouped by what an illustrator does with them
+          </span>
+        </h3>
+        {keywordGroups.map((group) => (
+          <div key={group.key} className="mt-3">
+            <div className="mb-1.5 text-[11px] uppercase tracking-wide text-mist-400">
+              {group.label}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {group.items.map((k) => (
+                <span key={k.term} className="tag">
+                  {k.term}
+                  <span className="font-mono text-[10px] text-mist-400">
+                    {k.count}
+                  </span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

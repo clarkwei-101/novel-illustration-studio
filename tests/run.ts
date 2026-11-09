@@ -24,7 +24,12 @@ import {
   SEEDANCE_LIMITS,
 } from "../src/lib/seedance";
 import { segmentChapters, detectLanguage } from "../src/lib/segment";
-import { analyze, classifyScene, splitSentences } from "../src/lib/analyze";
+import {
+  analyze,
+  classifyKeyword,
+  classifyScene,
+  splitSentences,
+} from "../src/lib/analyze";
 import { defaultTaxonomy } from "../src/lib/taxonomy";
 import { decodeText, detectFormat } from "../src/lib/parse";
 import { createFsDriver, setStorage } from "../src/lib/storage";
@@ -316,6 +321,94 @@ async function run(): Promise<void> {
     "a short passage still builds a relationship",
     narrationOnly.relationships.length > 0,
     String(narrationOnly.relationships.length),
+  );
+
+  // ── keyword extraction
+  //
+  // The keyword list is what an illustrator reads. It used to be built
+  // from raw character n-grams, which produced pure grammar (瞧瞧, 点头,
+  // 里来) because Chinese has no whitespace. It is now segmented and
+  // part-of-speech tagged, then filed by what an illustrator can do with
+  // the word.
+  group("Keyword extraction");
+
+  const keywordText = `第一章 夜宴
+
+林远山坐在书房里，手里捧着一盏茶。桌上的青铜香炉里升起一缕青烟。
+
+沈墨推开房门，手里握着一封旧信。窗外月色清冷，梅花开了满园。
+
+"你终于还是来了。"林远山放下茶盏，看向门口的沈墨。
+
+沈墨没有进来。他知道自己不配进去。
+
+第二章 灯谜
+
+园子里挂起了彩灯，众人围坐在长桌旁猜灯谜。桌上摆着点心和果盘。
+
+林远山取出一支笔，在纸上写下谜面。沈墨站在他身后，看着那些字。
+
+青峰山的雾很重。沈墨背着包袱，走在山道上。
+`;
+
+  const keywordAnalysis = analyze("kw", keywordText, taxonomy);
+  const keywordTerms = keywordAnalysis.keywords.map((k) => k.term);
+
+  check(
+    "the keyword list is not made of grammar fragments",
+    !keywordTerms.some((t) => ["瞧瞧", "点头", "里来", "知道", "出来", "起来"].includes(t)),
+    keywordTerms.join(", "),
+  );
+  check(
+    "a drawable object survives",
+    keywordTerms.some((t) => ["香炉", "茶盏", "灯", "笔", "谜面", "点心"].includes(t)),
+    keywordTerms.join(", "),
+  );
+  check(
+    "a place survives",
+    keywordTerms.some((t) => ["书房", "房门", "园子", "长桌", "山道"].includes(t)),
+    keywordTerms.join(", "),
+  );
+  check(
+    "a nature word survives",
+    keywordTerms.some((t) => ["月", "梅花", "青烟", "雾"].includes(t)),
+    keywordTerms.join(", "),
+  );
+  check(
+    "a person is not filed as a keyword",
+    !keywordTerms.some((t) => ["林远山", "沈墨", "父亲", "母亲", "孩子"].includes(t)),
+    keywordTerms.join(", "),
+  );
+  check(
+    "every keyword carries a category",
+    keywordAnalysis.keywords.every((k) =>
+      ["object", "place", "nature", "concept"].includes(k.category),
+    ),
+    keywordAnalysis.keywords.map((k) => `${k.term}:${k.category}`).join(", "),
+  );
+  check(
+    "a locative phrase is not a keyword",
+    !keywordTerms.some((t) => ["园里", "园中", "门口", "屋里"].includes(t)),
+    keywordTerms.join(", "),
+  );
+
+  // Negative control: the classifier must reject a word that names
+  // nothing an illustrator can draw. A check that has never been
+  // observed red is an untested code path.
+  check(
+    "an abstract noun is rejected",
+    classifyKeyword("主意") === null && classifyKeyword("光景") === null,
+    `${String(classifyKeyword("主意"))} / ${String(classifyKeyword("光景"))}`,
+  );
+  check(
+    "a locative phrase is rejected",
+    classifyKeyword("园里") === null,
+    String(classifyKeyword("园里")),
+  );
+  check(
+    "a concrete noun is accepted",
+    classifyKeyword("香炉") === "object" && classifyKeyword("书房") === "place",
+    `${String(classifyKeyword("香炉"))} / ${String(classifyKeyword("书房"))}`,
   );
 
   // ── prompt validation — positive cases

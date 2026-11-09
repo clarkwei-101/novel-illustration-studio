@@ -113,6 +113,39 @@ const NAV = [
   { href: "/agent", label: "Agent Guide", icon: "terminal" },
 ];
 
+/**
+ * The Society's cross-site identity. Every project built inside the
+ * `ai应用社` workspace embeds the Cyber Foundation logo and links back to
+ * the society site by default (see AGENTS.md).
+ */
+const CYBER_FOUNDATION_URL = "https://cyber-foundation-ten.vercel.app";
+
+export function CyberFoundationBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <a
+      href={CYBER_FOUNDATION_URL}
+      target="_blank"
+      rel="noreferrer noopener"
+      title="Cyber Foundation — HKUST AI应用社"
+      className="group flex items-center gap-2 rounded-lg border border-white/8 px-2 py-1 transition-colors hover:border-amber-glow/35 hover:bg-amber-glow/8"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.svg"
+        alt="Cyber Foundation"
+        width={compact ? 18 : 22}
+        height={compact ? 18 : 22}
+        className="shrink-0 rounded-[5px]"
+      />
+      {!compact && (
+        <span className="whitespace-nowrap text-[11px] font-medium tracking-wide text-mist-300 transition-colors group-hover:text-mist-100">
+          Cyber Foundation
+        </span>
+      )}
+    </a>
+  );
+}
+
 export function SiteHeader({ active }: { active?: string }) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/8 bg-ink-950/80 backdrop-blur-xl">
@@ -149,6 +182,8 @@ export function SiteHeader({ active }: { active?: string }) {
               </Link>
             );
           })}
+          <span className="mx-1 h-5 w-px bg-white/10" aria-hidden="true" />
+          <CyberFoundationBadge />
         </nav>
       </div>
     </header>
@@ -163,15 +198,27 @@ export function SiteFooter() {
           Novel Illustration Studio — deterministic parsing and Seedance prompt
           assembly, with an AI agent in the loop.
         </p>
-        <p className="flex items-center gap-4">
+        <p className="flex flex-wrap items-center gap-4">
           <Link href="/workflow" className="transition-colors hover:text-mist-200">
             Workflow
           </Link>
           <Link href="/agent" className="transition-colors hover:text-mist-200">
             Agent Guide
           </Link>
+          <a
+            href={CYBER_FOUNDATION_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="transition-colors hover:text-mist-200"
+          >
+            Cyber Foundation
+          </a>
         </p>
       </div>
+      <p className="mt-4 flex items-center gap-2 text-[11px] text-mist-400">
+        <CyberFoundationBadge compact />
+        A project of Cyber Foundation — HKUST AI应用社.
+      </p>
     </footer>
   );
 }

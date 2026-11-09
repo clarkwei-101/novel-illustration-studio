@@ -29,6 +29,16 @@ export type Category =
   | "emotion"
   | "theme";
 
+/**
+ * How a keyword can be used in a prompt.
+ *
+ * The buckets are chosen by what an illustrator does with the word, not
+ * by grammar: an `object` goes in the frame, a `place` sets the
+ * location, a `nature` word sets the light and palette, and a `concept`
+ * implies a whole gathering or event that has to be composed.
+ */
+export type KeywordCategory = "object" | "place" | "nature" | "concept";
+
 /** A sub-classification slot inside a category. */
 export interface Subcategory {
   key: string;
@@ -119,7 +129,7 @@ export interface Analysis {
   scenes: Scene[];
   relationships: Relationship[];
   /** Terms that recur but are not entities — themes / motifs. */
-  keywords: { term: string; count: number; category: Category }[];
+  keywords: { term: string; count: number; category: KeywordCategory }[];
 }
 
 /** One story beat / shot — the unit a prompt is generated for. */

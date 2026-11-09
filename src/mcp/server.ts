@@ -255,7 +255,14 @@ server.tool(
         z.object({
           term: z.string(),
           count: z.number().int().optional(),
-          category: z.enum(["character", "scene", "object", "event", "emotion", "theme"]).optional(),
+          category: z
+            .enum(["object", "place", "nature", "concept"])
+            .optional()
+            .describe(
+              "How the term is used in a prompt: an object in the frame, a place " +
+                "the camera is in, nature that sets the light, or a concept that " +
+                "frames a gathering.",
+            ),
         }),
       )
       .optional(),

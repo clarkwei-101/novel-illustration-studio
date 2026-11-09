@@ -11,72 +11,35 @@
 import type {
   Analysis,
   Entity,
+  KeywordCategory,
   Relationship,
   Scene,
   Taxonomy,
 } from "./types";
 import { segmentChapters } from "./segment";
 import { subcategoryIndex } from "./taxonomy";
+import { CHINESE_STOPWORDS } from "./stopwords";
+import { THEME_TAGS, mergeKnownNames, tagText } from "./segmenter";
+import {
+  countOccurrences,
+  identifyCharacterNames,
+  identifyLatinNames,
+  mergeCharacterAliases,
+  NAME_STOPWORDS,
+  TITLE_NOUNS,
+  COMMON_WORDS,
+  COMMON_NAME_LIKE_WORDS,
+} from "./names";
 
-/** Common Chinese surnames — the anchor for name detection. */
-const SURNAMES = new Set(
-  (
-    "赵钱孙李周吴郑王冯陈褚卫蒋沈韩杨朱秦尤许何吕施张孔曹严华金魏陶姜戚谢邹喻" +
-    "柏水窦章云苏潘葛奚范彭郎鲁韦昌马苗凤花方俞任袁柳酆鲍史唐费廉岑薛雷贺倪汤" +
-    "滕殷罗毕郝邬安常乐于时傅皮卞齐康伍余元卜顾孟平黄和穆萧尹姚邵湛汪祁毛" +
-    "禹狄米贝明臧计伏成戴谈宋茅庞熊纪舒屈项祝董梁杜阮蓝闵席季麻强贾路娄危江童" +
-    "颜郭梅盛林刁钟徐邱骆高夏蔡田樊胡凌霍虞万支柯昝管卢莫经房裘缪干解应宗丁宣" +
-    "贲邓郁单杭洪包诸左石崔吉钮龚程嵇邢滑裴陆荣翁荀羊於惠甄曲家封芮羿储靳汲邴" +
-    "糜松井段富巫乌焦巴弓牧隗山谷车侯宓蓬全郗班仰秋仲伊宫宁仇栾暴甘钭厉戎祖" +
-    "武符刘景詹束龙叶幸司韶郜黎蓟薄印宿白怀蒲邰从鄂索咸籍赖卓蔺屠蒙池乔阴胥能" +
-    "苍双闻莘党翟谭贡劳逄姬申扶堵冉宰郦雍郤璩桑桂濮牛寿通边扈燕冀郏浦尚农温" +
-    "别庄晏柴瞿阎充慕连茹习宦艾鱼容向古易慎戈廖庾终暨居衡步都耿满弘匡国文寇" +
-    "广禄阙东欧殳沃利蔚越夔隆师巩厍聂晁勾敖融冷訾辛阚那简饶空曾毋沙乜养鞠须" +
-    "丰巢关蒯相查后荆红游竺权逯盖益桓公"
-  ).split(""),
-);
-
-/** Words that look like names but are common vocabulary. */
-const NAME_STOPWORDS = new Set([
-  "什么", "怎么", "这样", "那样", "这个", "那个", "我们", "你们", "他们", "她们",
-  "自己", "众人", "大家", "有人", "那人", "这人", "对方", "一旁", "一声", "一句",
-  "一个", "一些", "所有", "整个", "这里", "那里", "哪里", "时候", "地方", "东西",
-  "声音", "眼神", "嘴角", "心中", "心里", "脑海", "身边", "面前", "身后", "眼前",
-  "因为", "所以", "但是", "如果", "虽然", "然后", "于是", "不过", "只是", "已经",
-  "现在", "刚才", "刚才", "片刻", "半晌", "许久", "良久", "忽然", "突然", "依然",
-  "仍然", "依旧", "似乎", "仿佛", "好像", "宛如", "犹如", "一般", "一起", "一直",
-  "说道", "笑道", "问道", "答道", "喝道", "骂道", "叹道", "低声道", "冷声道",
-  "转向", "看向", "望向", "走向", "走去", "跑来", "站起", "坐下", "抬手", "伸手",
-  "一旁", "一声", "两头", "三人", "两人", "众人", "两人", "个数", "此时", "片刻",
-  "父亲", "母亲", "哥哥", "姐姐", "弟弟", "妹妹", "爷爷", "奶奶", "叔叔", "阿姨",
-  "师父", "师傅", "弟子", "公子", "姑娘", "大人", "陛下", "殿下", "长老", "前辈",
-]);
-
-/** Speech-attribution verbs that follow a speaker name. */
-const SPEECH_VERBS = [
-  "说道", "问道", "答道", "笑道", "喝道", "骂道", "叹道", "低声道", "冷声道",
-  "沉声道", "轻声", "大声", "怒道", "解释道", "补充道", "反驳道", "喃喃",
-  "开口", "出声", "回答", "反问", "追问", "喊道", "怒斥", "冷笑", "沉吟",
-];
-
-/**
- * Narration verbs — the predicate of a descriptive sentence.
- *
- * Together with a surname-initial prefix these identify a subject even when
- * the sentence contains no dialogue at all, which is the common case in the
- * opening paragraphs of a novel and in every chapter that is pure scene
- * description. Matched longest-prefix-first, so "林远山坐在" yields the
- * subject "林远山" and leaves the verb alone.
- */
-const NARRATION_VERBS = [
-  "坐在", "站在", "躺在", "靠着", "望着", "看着", "盯着", "听着",
-  "抬起头", "低下头", "转过身", "皱起眉", "摇摇头", "点点头", "站起身",
-  "走上前", "走过来", "走过去", "坐下", "站起", "推开门", "走出门",
-  "走向", "走到", "来到", "回到", "走进", "走出", "爬上", "下山",
-  "背上", "背起", "扛着", "抱着", "握住", "拿起", "放下", "抽出",
-  "端起", "松开", "摊开", "合上", "踏进", "迈出", "捂住",
-  "终于", "已经", "仍然", "依然", "始终",
-];
+// The name-extraction engine lives in its own module, but the rest of the
+// app has always imported it from here. Re-export so both paths work.
+export {
+  countOccurrences,
+  identifyCharacterNames,
+  identifyLatinNames,
+  mergeCharacterAliases,
+} from "./names";
+export type { CharacterCandidate } from "./names";
 
 /** Location markers used to spot scene-bearing sentences. */
 const PLACE_SUFFIX = [
@@ -93,12 +56,35 @@ const EVENT_WORDS = [
   "突破", "顿悟", "陨落", "身亡", "牺牲", "得救", "被抓", "逃脱", "相遇", "设宴",
 ];
 
-/** Stop words for keyword extraction. */
+/**
+ * Stop words for keyword extraction.
+ *
+ * Chinese has no whitespace, so the candidate set is every 2–4 character
+ * n-gram. Without a real stop list, the most frequent grams are grammar,
+ * not theme: 起来 (1021), 出来 (1006), 如今 (973), 两个 (762), 听见 (659),
+ * 咱们 (585). A keyword list made of those tells an illustrator nothing.
+ *
+ * The list therefore covers three families:
+ *   - pronouns and demonstratives (自己, 我们, 这个);
+ *   - conjunctions and adverbs (因为, 所以, 虽然, 已经, 起来, 出来);
+ *   - the generic quantifiers and measure words (两个, 三个, 一切).
+ */
 const KEYWORD_STOP = new Set([
-  "自己", "我们", "你们", "他们", "这个", "那个", "什么", "怎么", "一个", "没有",
-  "可以", "因为", "所以", "但是", "如果", "虽然", "已经", "还有", "就是", "不是",
-  "知道", "现在", "时候", "地方", "东西", "这样", "那样", "一起", "声音", "眼睛",
-  "手", "head", "the", "and", "with", "that", "this", "from", "have", "was",
+  "自己", "我们", "你们", "他们", "她们", "咱们", "这个", "那个", "什么",
+  "怎么", "没有", "可以", "因为", "所以", "但是", "如果", "虽然", "已经",
+  "还有", "就是", "不是", "知道", "现在", "时候", "地方", "东西", "这样",
+  "那样", "一起", "声音", "眼睛", "起来", "出来", "进来", "过来", "回去",
+  "上来", "下来", "如今", "从来", "向来", "两个", "三个", "一个", "一些",
+  "许多", "多少", "几个", "听见", "看见", "有人", "众人", "大家", "人家",
+  "一直", "只管", "连忙", "急忙", "不住", "起来", "这里", "那里", "哪里",
+  "什么", "两个", "一面", "一时", "越发", "更加", "越发", "从来",
+  "原来", "本来", "方才", "刚刚", "立刻", "随即", "接着", "然后", "于是",
+  "head", "the", "and", "with", "that", "this", "from", "have", "was",
+  // Verb phrases are not themes either: 回来, 出去, 叫他, 见他, 告诉.
+  "回来", "出去", "进来", "过来", "叫他", "见她", "见他", "告诉", "个人",
+  "回来", "出去", "起来", "出来", "进去", "过去", "下去", "上来", "下来",
+  "一回", "一时", "一直", "一面", "一半", "一起", "一遭", "一连", "一头",
+  "起来", "出来", "过来", "起来", "罢了", "好些", "多少", "许多",
 ]);
 
 function isHan(ch: string): boolean {
@@ -129,280 +115,6 @@ function extractQuotes(
     });
   }
   return out;
-}
-
-/** Adverbs / particles that sit between a name and its speech verb. */
-const NAME_TAIL_NOISE = new Set([
-  "缓缓", "慢慢", "淡淡", "冷冷", "轻轻", "微微", "忽然", "突然", "连忙", "急忙",
-  "终于", "仍然", "依然", "还", "又", "就", "才", "便", "却", "也", "不", "没",
-  "很", "太", "最", "更", "都", "再", "便又", "随即", "立刻", "接着", "然后",
-  "于是", "因此", "所以", "只是", "已经", "轻轻", "低低", "缓缓地", "的", "地",
-  "一声", "一句", "一遍", "一下", "抬起头", "站在", "走着", "看", "问", "说",
-]);
-
-/**
- * Compound surnames — the only names allowed to be four characters long.
- * A four-character candidate that is not one of these is a noun phrase
- * ("那份名单"), never a person.
- */
-const COMPOUND_SURNAMES = new Set([
-  "欧阳", "司马", "上官", "诸葛", "夏侯", "东方", "独孤", "南宫", "皇甫",
-  "尉迟", "公孙", "慕容", "长孙", "宇文", "令狐", "闻人", "澹台", "轩辕",
-  "太史", "仲孙", "钟离", "闾丘", "端木", "西门", "南门", "北堂",
-]);
-
-/** Words that trail a name inside a narration frame ("林远山缓缓道"). */
-const TRAILING_ADVERBS = new Set([
-  "缓", "轻", "冷", "淡", "沉", "突", "忽", "随", "便", "都", "也", "还",
-  "又", "再", "才", "却", "静", "默", "摇", "抬", "转", "皱", "笑", "点",
-  "摇", "摊", "伸", "垂", "静", "缓", "低", "高", "连", "忙", "急",
-]);
-
-/** Characters that never appear inside a person name. */
-const NAME_FORBIDDEN_CHARS = new Set([
-  "的", "了", "是", "在", "和", "与", "也", "就", "都", "很", "更", "不", "没",
-  "我", "你", "他", "她", "它", "这", "那", "些", "个", "之", "而", "但",
-]);
-
-/**
- * Characters that a Chinese given name essentially never ends with.
- *
- * This is what separates a name from a name-plus-verb: "林远山坐在" contains
- * the subject "林远山" followed by the verb "坐在", but the naive longest-
- * prefix rule would happily produce "林远山坐". A given name ends in a
- * noun-like character, so rejecting verb tails keeps the boundary honest.
- */
-const NAME_VERB_TAIL = new Set(
-  (
-    "站坐走跑看说听拿放握背打吃喝想问答笑哭叫喊见闻来去回到进出上下起过" +
-    "开关住靠躺跨迈追逃躲藏抓推拉举挥摇转抬伸捧接抛踏踩扑闪撞碰敲拍按摸" +
-    "捏提拖抱扛挑摘收摆挂贴装倒扫擦洗剪切割缝补织编折弯缓慢轻重深浅快忽" +
-    "突顿渐立刻瞬时地得着了过在是和与但却就才也又再更最只曾将会要能可应" +
-    "该须能愿想让使令给被让把从向往对与如同按据由至还总常常往往偶时终然"
-  ).split(""),
-);
-
-/** Common nouns that read like names but describe a place. */
-const COMMON_PLACE_NOUNS = new Set([
-  "书房", "客厅", "卧室", "厨房", "院子", "走廊", "大厅", "广场", "校场",
-  "军营", "店铺", "书房", "清风楼", "青峰山", "客栈", "酒馆", "茶楼",
-  "山门", "后崖", "大厅", "密道", "名单", "信封", "箱子", "房间",
-]);
-
-/** Strip trailing adverbs from a candidate name. */
-function trimNameTail(candidate: string): string {
-  let name = candidate;
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const noise of NAME_TAIL_NOISE) {
-      if (name.length > noise.length && name.endsWith(noise)) {
-        name = name.slice(0, -noise.length);
-        changed = true;
-        break;
-      }
-    }
-    // A single trailing adverb character.
-    if (name.length > 2 && TRAILING_ADVERBS.has(name[name.length - 1])) {
-      name = name.slice(0, -1);
-      changed = true;
-    }
-  }
-  return name;
-}
-
-/**
- * Strip trailing adverbs from a candidate name.
- * "林远山缓缓" → "林远山", "沈墨的" → "沈墨".
- */
-function trimTrailingAdverbs(candidate: string): string {
-  let name = candidate;
-  while (name.length > 2 && TRAILING_ADVERBS.has(name[name.length - 1])) {
-    name = name.slice(0, -1);
-  }
-  return name;
-}
-
-/**
- * Identify candidate Chinese person names.
- *
- * Two-phase, and the phases do different jobs:
- *   1. IDENTIFY — find *where* a name is mentioned, using dialogue
- *      attribution ("X说道"), quote adjacency ("…"林远山缓缓道) and
- *      in-quote address ("沈墨，…"). This is the hard part and it needs
- *      grammar, not frequency.
- *   2. COUNT — once a name is known, count every occurrence in the text.
- *      Doing it the other way round (counting n-grams first) produces
- *      "书房里" and "山缓缓" as people.
- *
- * Splitting the phases matters because a name can be mentioned 20 times
- * without ever being followed by a speech verb.
- */
-export function identifyCharacterNames(text: string): Set<string> {
-  const found = new Set<string>();
-
-  const accept = (raw: string) => {
-    let name = trimNameTail(trimTrailingAdverbs(raw));
-    if (name.length < 2 || name.length > 4) return;
-    if (NAME_STOPWORDS.has(name)) return;
-    if (!/^[一-鿿]+$/.test(name)) return;
-    if (COMMON_PLACE_NOUNS.has(name)) return;
-    if ([...name].some((c) => NAME_FORBIDDEN_CHARS.has(c))) return;
-    if (name.length === 4 && !COMPOUND_SURNAMES.has(name.slice(0, 2))) return;
-    if (!SURNAMES.has(name[0]) && !COMPOUND_SURNAMES.has(name.slice(0, 2))) {
-      return;
-    }
-    // A personal name may legitimately end in a character that is also a
-    // place suffix — "林远山" ends in 山 and is a person. Place-like words are
-    // rejected by COMMON_PLACE_NOUNS instead, not by the suffix list.
-    found.add(name);
-  };
-
-  /**
-   * From a run of Han characters ending at a speech verb, take the LONGEST
-   * plausible name that starts at a surname. Taking the longest is what
-   * separates "林远山" from "林远" — both are substrings of the run, but only
-   * one of them is the name.
-   *
-   * `rejectVerbTail` additionally refuses a candidate whose last character is
-   * a verb. Without it, the run "林远山坐" (subject + verb) yields the
-   * four-character non-name "林远山坐"; with it, the run yields "林远山" and
-   * the verb is left where it belongs.
-   */
-  const acceptFromRun = (
-    raw: string,
-    options: { rejectVerbTail?: boolean } = {},
-  ) => {
-    const trimmed = trimNameTail(raw);
-    for (let start = 0; start < trimmed.length - 1; start += 1) {
-      if (!SURNAMES.has(trimmed[start])) continue;
-      for (let len = Math.min(4, trimmed.length - start); len >= 2; len -= 1) {
-        const candidate = trimmed.slice(start, start + len);
-        if (len === 4 && !COMPOUND_SURNAMES.has(candidate.slice(0, 2))) continue;
-        if ([...candidate].some((c) => NAME_FORBIDDEN_CHARS.has(c))) continue;
-        if (options.rejectVerbTail && NAME_VERB_TAIL.has(candidate[candidate.length - 1])) {
-          continue;
-        }
-        // Only the longest valid candidate counts — accepting every length
-        // would register "林远" alongside "林远山".
-        accept(candidate);
-        return;
-      }
-      return;
-    }
-  };
-
-  // 1a) Dialogue attribution: 1-6 Han characters before a speech verb.
-  for (const verb of SPEECH_VERBS) {
-    const re = new RegExp(`([\\u4e00-\\u9fff]{1,6})${verb}`, "g");
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      acceptFromRun(m[1]);
-    }
-  }
-
-  // 1b) Possessive narration: "沈墨的声音很轻"
-  const voiceRe = /([一-鿿]{2,4})的声音/g;
-  let vm: RegExpExecArray | null;
-  while ((vm = voiceRe.exec(text)) !== null) {
-    acceptFromRun(vm[1]);
-  }
-
-  // 1c) Quote adjacency: "…"X说道 / "…"X缓缓道
-  const quoteRe = /[”"」』]\s*，?\s*([一-鿿]{1,6})(说道|问道|答道|笑道|喝道|骂道|叹道|冷笑道|低声道|开口道|回答|反问|追问|喊道|怒斥|道|说|问|答)/g;
-  let qm: RegExpExecArray | null;
-  while ((qm = quoteRe.exec(text)) !== null) {
-    acceptFromRun(qm[1]);
-  }
-
-  // 1d) Address inside a quote: "沈墨，…"
-  const addrRe = /[“"「『]([一-鿿]{2,3})[，,]/g;
-  let am: RegExpExecArray | null;
-  while ((am = addrRe.exec(text)) !== null) {
-    accept(am[1]);
-  }
-
-  // 1e) Narration frame: the subject of a descriptive sentence.
-  //
-  // Chinese puts the subject at the front of a clause, so "林远山坐在书房里"
-  // identifies its subject without any speech verb at all. This is the frame
-  // that keeps short chapters — which often contain no dialogue — from
-  // yielding zero people.
-  //
-  // The candidate is the longest surname-initial prefix of the run that does
-  // not END in a verb character, which is what keeps "林远山坐" (subject +
-  // verb) from being read as a four-syllable name.
-  for (const verb of NARRATION_VERBS) {
-    const re = new RegExp(`([\\u4e00-\\u9fff]{1,6})${verb}`, "g");
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      acceptFromRun(m[1], { rejectVerbTail: true });
-    }
-  }
-
-  // Resolve overlaps: if one candidate is a proper prefix of another, the
-  // longer one wins — "林远" is a prefix of "林远山", and only one of them
-  // is a person.
-  const all = [...found];
-  return new Set(
-    all.filter(
-      (name) =>
-        !all.some(
-          (other) => other !== name && other.startsWith(name) && other.length > name.length,
-        ),
-    ),
-  );
-}
-
-/**
- * Identify English/Latin person names.
- *
- * Latin fiction capitalises names and rarely capitalises anything else in
- * narrative prose, so a capitalised word that recurs and is not a common
- * word is a strong candidate.
- */
-export function identifyLatinNames(text: string): Set<string> {
-  const common = new Set([
-    "The", "A", "An", "He", "She", "It", "They", "We", "I", "But", "And", "Then",
-    "When", "Chapter", "Book", "Part", "Volume", "One", "Two", "Three", "This",
-    "That", "There", "Here", "Now", "So", "If", "As", "At", "In", "On", "Of",
-    "His", "Her", "My", "Your", "Our", "Their", "Was", "Were", "Had", "Has",
-    "Not", "No", "Yes", "For", "With", "From", "Into", "Out", "Up", "Down",
-    "Over", "Under", "After", "Before", "But", "Who", "What", "Why", "How",
-  ]);
-  const candidates = new Map<string, number>();
-  const re = /\b([A-Z][a-z]{1,15})\b(?:\s+([A-Z][a-z]{1,15}))?/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const first = m[1];
-    if (common.has(first)) continue;
-    const full = m[2] ? `${first} ${m[2]}` : first;
-    if (full.length < 3 || full.length > 30) continue;
-    candidates.set(full, (candidates.get(full) ?? 0) + 1);
-  }
-  const found = new Set<string>();
-  for (const [name, count] of candidates) {
-    if (count >= 2) found.add(name);
-  }
-  return found;
-}
-
-/** Count how often each surface form occurs in the text. */
-export function countOccurrences(
-  text: string,
-  names: Iterable<string>,
-): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const name of names) {
-    let at = text.indexOf(name);
-    let n = 0;
-    while (at !== -1) {
-      n += 1;
-      at = text.indexOf(name, at + name.length);
-    }
-    if (n > 0) counts.set(name, n);
-  }
-  return counts;
 }
 
 /** Build a per-chapter name index so we can measure spread and co-occurrence. */
@@ -448,10 +160,17 @@ function summarise(name: string, evidence: string[]): string {
  *    ~350 characters of each other are in the same scene);
  *  - dialogue pair: a quoted line whose speaker is one character and whose
  *    text addresses another.
+ *
+ * The result is capped. In a 900k-character novel with 40 characters,
+ * EVERY pair co-occurs somewhere, so an uncapped graph has 780 edges and
+ * no signal at all — a relationship list that says "these two people were
+ * both in the book" is worthless to an illustrator. Only the strongest
+ * edges survive.
  */
 export function extractRelationships(
   text: string,
   characters: { id: string; name: string }[],
+  limit = 80,
 ): Relationship[] {
   const byName = new Map(characters.map((c) => [c.name, c]));
   const nameSet = new Set(byName.keys());
@@ -542,9 +261,8 @@ export function extractRelationships(
       evidence: value.evidence,
     });
   }
-  return out.sort((x, y) => y.weight - x.weight);
-}
-/**
+  return out.sort((x, y) => y.weight - x.weight).slice(0, limit);
+}/**
  * Extract location / scene candidates.
  *
  * Two independent patterns, because Chinese fiction names places in two ways:
@@ -637,73 +355,341 @@ function rankCharacters(
 }
 
 
-/** Function words and particles that make an n-gram a word fragment. */
-const GRAM_FORBIDDEN = [
-  "的", "了", "着", "过", "是", "在", "和", "与", "也", "就", "都", "而",
-  "又", "还", "把", "被", "给", "让", "从", "向", "对", "为", "之", "其",
-  "此", "那", "这", "一", "不", "没", "很", "更", "最", "只", "但", "却",
-];
+/**
+ * Characters that end a speech or action verb.
+ *
+ * A keyword that ends in one of these is a name glued to its own verb —
+ * "玉道" out of "宝玉道", "姐儿说", "手抬". Those belong to a person,
+ * not to the theme list.
+ */
+const KEYWORD_VERB_TAIL = new Set("说道问答笑喝骂叫喊叹听走站坐拿放看想".split(""));
 
 /**
- * Extract recurring keywords.
+ * Nouns that refer to a PERSON, not to a theme.
  *
- * Chinese has no whitespace, so without a segmenter the candidates are
- * n-grams of 2–4 Han characters. Three filters keep the list useful:
- *   - a gram that contains a character name is a name fragment, not a theme;
- *   - a gram that appears fewer times than the text's density warrants is
- *     noise (the threshold scales with the text length, so a short story is
- *     not left with an empty list);
- *   - a gram that is contained in a longer, more frequent gram is redundant.
+ * jieba tags kinship nouns as 普通名词 (太太/奶奶/丫头 are all "n"), so the
+ * POS tag alone cannot separate "母亲" from "账房". This list does.
+ *
+ * It is deliberately wider than the cast list: a keyword list that says
+ * 母亲 175, 父亲 124, 父母 96 tells an illustrator nothing they did not
+ * already know from the cast, while the same slots in the list should hold
+ * 银子, 扇子, 荷包 — the things that can actually be drawn.
+ */
+const PERSON_NOUNS = new Set([
+  "母亲", "父亲", "父母", "爹娘", "爹", "娘", "孩子", "儿女", "儿子", "女儿",
+  "孙子", "孙女", "兄弟", "姊妹", "姐妹", "亲戚", "家人", "家族", "亲人",
+  "女人", "男人", "女人家", "人家", "众人", "大家", "客人", "宾客", "客人",
+  "主仆", "下人", "奴才", "小厮", "婆子", "丫鬟", "丫头", "奶妈", "奶娘",
+  "媳妇", "娘子", "婶子", "婶娘", "叔叔", "伯父", "伯母", "舅舅", "舅母",
+  "姑妈", "姑父", "姑母", "表兄", "表弟", "表姐", "表妹", "堂兄", "堂弟",
+  "师兄", "师弟", "师叔", "师伯", "师祖", "师父", "徒弟", "先生", "大夫",
+  "太爷", "大爷", "二爷", "三爷", "爷们", "哥儿", "姐儿", "小主子", "主子",
+  "二姐", "三姐", "大姐", "小姐", "少爷", "少奶奶", "姑娘", "奶奶", "太太",
+  "老爷", "妈妈", "嬷嬷", "师傅", "长随", "小厮们", "家人", "嫔妃", "娘娘",
+  "贵妃", "妃子", "皇帝", "皇上", "圣上", "太后", "太妃", "公主", "皇子",
+  "王爷", "贝勒", "将军", "元帅", "老爷们", "哥儿们",
+  "小子", "姑子", "厨子", "戏子", "痞子", "呆子", "傻子", "疯子", "泼子",
+  "花子", "胡子", "瘸子", "瞎子", "哑巴", "老婆子", "孩子他", "小子们",
+  "侍书", "彩霞", "彩云", "琥珀", "翠缕", "紫鹃", "雪雁", "莺儿", "麝月",
+  "秋纹", "碧痕", "茜雪", "司棋", "入画", "抱琴", "金钏", "玉钏", "柳家",
+]);
+
+/**
+ * Suffixes that mark a concrete, drawable noun.
+ *
+ * This is the classical Chinese test for concreteness: a word ending in a
+ * material, container, building or plant morpheme denotes a thing in the
+ * world, while 主意, 光景 and 原故 denote abstractions no illustrator can
+ * render at all.
+ *
+ * It is the filter that turns a raw noun-frequency list into a prompt
+ * vocabulary. On 红楼梦 it keeps 银子 (347), 扇子 (45), 荷包 (29),
+ * 胭脂 (25), 珍珠 (23), 书房 (80), 帘子 (38), 箱子 (29) and drops
+ * 主意 (180), 光景 (84), 原故 (109), 好歹 (66).
+ *
+ * Only unambiguous morphemes are listed. 子 also forms half the kinship
+ * nouns (嫂子, 小子) and 头 heads half the verbs (低头, 回头); those are
+ * handled by the person-noun and verb filters, not here.
+ */
+const CONCRETE_SUFFIX = new Set(
+  (
+    // containers, furniture, tools
+    "碗盘杯壶瓶罐箱笼匣盒篮筐桶缸坛炉灶锅铲刀剪针线绳索梭" +
+    "桌几案椅凳床榻帐被褥席毯枕帘幕屏帏橱柜架函笺帖信札册卷书" +
+    "纸笔墨砚琴笛箫鼓钟磬锣琵琶伞帽鞋袜衣裙裳袍褂甲胄钗镯环佩" +
+    "珠玉金银铜铁锡铅木竹布绢锦缎绫罗纱绸棉麻瓷陶璧璎珞扇帕巾囊袋" +
+    "包袱奁篥柜橱舆轿辇车船艇舟桨篙辎械弓矢刀枪剑戟矛灯烛" +
+    // food
+    "茶酒饭肉鸡鸭鹅蛋奶酪酥蜜饯糖盐酱醋油脂膏粥饼饽糕粽果" +
+    // body and illness
+    "疮伤疤疹瘤肿窍脏腑脉息泪血汗涕唾痰涎发肤" +
+    // small things and materials
+    "盏碟匙勺结绦网兜筒道烟心盘宝贝玩物器兵裙裤巾" +
+    "银钱钞币金银铜铁锡铅木竹泥陶瓷玉石角瓣枝叶根茎蕊籽" +
+    "面线绳帛绸绡绢缣縠锦缎绫罗棉絮扇笠盔舆幌" +
+    // food and drink, continued
+    "羹汤粥饼糖茶酒醋酱油蜡香烛药草根茎叶瓣蕊"
+  ).split(""),
+);
+
+/**
+ * Suffixes that mark NATURE — the world a shot takes place in.
+ *
+ * These are separated from the generic concrete-noun list because a
+ * plant or a weather word tells an illustrator what the light and the
+ * palette look like, which is a different decision from "there is a fan
+ * in the shot".
+ */
+const NATURE_SUFFIX = new Set(
+  "花草树木林苑圃畦苔萍莲菊梅兰竹荷桂桃杏梨枣枫槐松柏杨柳莺燕雀鸦雁" +
+    "鹤鹿豕犬猫鱼虾蟹蛟龙蛇龟凤鸾鹰隼狐狼熊虎豹稻黍稷麦菽粟豆" +
+    "薯芋藕菱荇藻茅蓬蒿棘薇萝蕙兰荞麻苇荻竹篙桨帆篷帷" +
+    "风雨雷电云霞雾露霜雪冰雹虹霓日月星晨昏昼曦晖阳泉谷坡岗岭崖" +
+    "壤泥沙石岩洞壑屿潭池沼湖海江河洲渚岸滩原野径陌畦垄埂",
+);
+
+/**
+ * Suffixes that mark a PLACE.
+ *
+ * Places are separated from generic objects because they answer a
+ * different question in a prompt: not "what is in the frame" but "where
+ * is the camera".
+ */
+const CONCRETE_PLACE_SUFFIX = new Set(
+  "房舍屋宅院苑园囿圃场厂坊巷街路桥亭榭台阁楼殿宫室寺观庙祠塔" +
+    "府仓库塾馆铺店摊庄堡寨园囿轩斋坞陌郭闾" +
+    "关厢城门墙垣径谷坡岗岭崖洞穴窟潭池沼湖海江河川溪泉岛屿洲渚岸滩",
+);
+
+/**
+ * Suffixes that mark an ABSTRACTION which still frames a scene.
+ *
+ * A concept is worth keeping even though it cannot be drawn: 诗社 says
+ * "a poetry circle", 灯谜 says "a lantern-riddle festival", 省亲 says
+ * "a provincial inspection visit". Each one implies a whole composition
+ * — who is gathered, where, doing what — even though the word itself is
+ * not an object.
+ */
+const CONCEPT_SUFFIX = new Set(
+  "社谜宴会赛祭庆节礼典仪局席筵集苑观会馆场坊",);
+
+/**
+ * Suffixes that make a word a LOCATIVE PHRASE rather than a thing.
+ *
+ * 园里, 园中, 门口, 屋内, 桌上, 床上, 心里 — these are "in/at/on X"
+ * constructions. They are extremely frequent in a novel and they say
+ * where the camera is pointing, but they are not themes: the scene
+ * layer already extracts the places themselves.
+ */
+const LOCATIVE_TAIL = new Set("里中内外上下前后旁侧畔间邻".split(""));
+
+/**
+ * Abstract nouns that jieba tags as 普通名词 but that no illustrator can
+ * draw.
+ *
+ * These are feelings, mental states and judgements. 伤心 (87) and 伤感
+ * (34) in 红楼梦 are the two biggest offenders; 主意, 原故 and 好歹 are
+ * already excluded by the morpheme test because they end in a
+ * grammatical character.
+ */
+const ABSTRACT_NOUNS = new Set([
+  "伤心", "伤感", "欢喜", "高兴", "生气", "担心", "喜欢", "满意", "失望",
+  "得意", "后悔", "委屈", "难过", "伤心处", "开心", "伤心事", "伤心话",
+  "读书", "念书", "写字", "下棋", "喝酒", "吃饭", "说话", "做事", "打算",
+  "主意", "原故", "光景", "好歹", "分寸", "情面", "脸面", "体面", "腰板",
+  "混帐", "胡闹", "道理", "规矩", "章程", "省亲", "省视", "故事", "新闻",
+  "日子", "无法", "益发", "越发", "十分", "从来", "方才",
+  "一时", "一起", "一番", "一般", "一味", "余者", "本地",
+  "小心", "开心", "放心", "决心", "用心", "恶心", "寒心", "疑心", "小心眼",
+  "人物", "理会", "心意", "心意儿", "道理", "理儿", "情面", "情由", "情分",
+  "分内", "分外", "分毫", "分寸", "分晓", "身份", "体统", "体面", "门面",
+  "恩典", "境界", "造化", "缘分", "缘法", "情景", "情境", "意境", "意趣",
+  "志向", "意思", "行礼", "身子", "蹄子", "孩子们", "嫂子们", "事由",
+]);
+
+/**
+ * Extract recurring keywords, classified by what an illustrator can do
+ * with them.
+ *
+ * This used to work on raw character n-grams, which was the only option
+ * without a segmenter — and it produced a list no illustrator could use.
+ * The twenty most frequent n-grams of any Chinese novel are grammar
+ * (起来, 出来, 里头, 瞧瞧, 点头), because Chinese has no whitespace and
+ * a character slicer cannot tell a word from a piece of a word. No
+ * stopword list fixes this: the list grows forever and the next fragment
+ * is always waiting.
+ *
+ * With jieba the same statistics become meaningful, because a segmenter
+ * marks word boundaries and part of speech. In 红楼梦 the top nouns are
+ * 银子 347, 怡红院 78, 大观园 49, 眼泪 58, 省亲 24, 诗社 18, 灯谜 6 —
+ * exactly the vocabulary an illustrator needs.
+ *
+ * But a raw noun-frequency list is still 60% people and 30% abstractions
+ * (主意 180, 光景 84, 原故 109). A prompt needs the *drawable* nouns, so
+ * every candidate is filed by category:
+ *
+ *   "object" — a thing with a material or shape: 银子, 扇子, 荷包, 珠子
+ *   "place"  — a place: 书房, 怡红院, 衙门, 花园
+ *   "nature" — the world: 海棠, 桃花, 月, 雪
+ *   "concept"— an abstraction that still frames a scene: 诗社, 灯谜, 省亲
+ *
+ * The categories are assigned by the *morpheme* the word ends in, which
+ * is the classical Chinese test for concreteness: a word ending in a
+ * material, container, building or plant morpheme denotes a thing in the
+ * world, while 主意 and 原故 denote nothing that can be drawn.
+ *
+ * The segmenter is a native module, so this function is server-only.
  */
 export function extractKeywords(
   text: string,
   limit = 40,
   exclude: string[] = [],
-): { term: string; count: number }[] {
-  const counts = new Map<string, number>();
+  known: string[] = [],
+): { term: string; count: number; category: KeywordCategory }[] {
+  // The segmenter does not know this novel. Its dictionary cuts 清风楼
+  // into 清风 + 楼, which would file the place as "nature" (because 风 is
+  // a weather morpheme) and lose the name entirely. The name engine has
+  // already found the proper nouns, so the two token streams are
+  // recombined before anything is counted.
+  //
+  // `known` and `exclude` are different lists on purpose. A scene title
+  // belongs to `known` — it must be recognised as one word — but it is
+  // NOT excluded from the keyword list, because 怡红院 and 大观园 are
+  // exactly the words an illustrator wants.
+  const tagged = mergeKnownNames(tagText(text), [
+    ...known,
+    ...exclude,
+  ]);
 
-  // Chinese has no whitespace, so the candidates are n-grams of 2–4 Han
-  // characters. They must be generated per length: a greedy /{2,4}/ match
-  // consumes four characters at a time and never produces a single 2-gram.
-  for (const run of text.match(/[一-鿿]+/g) ?? []) {
-    for (let n = 2; n <= 4; n += 1) {
-      for (let i = 0; i + n <= run.length; i += 1) {
-        const gram = run.slice(i, i + n);
-        if (KEYWORD_STOP.has(gram)) continue;
-        if (NAME_STOPWORDS.has(gram)) continue;
-        // A gram that carries a particle is a fragment of two words
-        // ("山" + "的"), not a word itself.
-        if (GRAM_FORBIDDEN.some((c) => gram.includes(c))) continue;
-        counts.set(gram, (counts.get(gram) ?? 0) + 1);
-      }
-    }
+  const counts = new Map<string, number>();
+  for (const { word, tag } of tagged) {
+    if (word.length < 2 || word.length > 6) continue;
+    if (!THEME_TAGS.has(tag)) continue;
+    counts.set(word, (counts.get(word) ?? 0) + 1);
   }
-  for (const word of text.match(/\b[a-z]{4,12}\b/gi) ?? []) {
-    const lower = word.toLowerCase();
-    if (KEYWORD_STOP.has(lower)) continue;
+  // Latin words survive the Chinese segmenter untouched, so they are
+  // counted separately — a novel can be bilingual.
+  for (const word of text.match(/\b[a-zA-Z]{4,12}\b/g) ?? []) {
+    if (CHINESE_STOPWORDS.has(word.toLowerCase())) continue;
     counts.set(word, (counts.get(word) ?? 0) + 1);
   }
 
-  // Density-aware threshold: a 600-character chapter legitimately contains
-  // terms that occur only twice, while a 300k-character epic needs more.
-  const minCount = Math.max(2, Math.floor(text.length / 2500));
+  // The density-aware threshold.
+  //
+  // A short passage legitimately contains terms that occur once — the
+  // one 香炉 in a scene IS the detail an illustrator needs. A 900k
+  // novel needs a higher bar or the list is just a frequency dump.
+  //
+  // The factor has to be gentle. At 1/2500 a whole novel demanded 362
+  // occurrences, which is above the frequency of every actual theme in
+  // it: 大观园 appears 49 times, 诗社 18, 灯谜 6. At the old 1/60000
+  // the novel needed 16, which still dropped 灯谜. At 1/300000 the
+  // novel needs 3 — low enough to keep 灯谜, high enough to bury the
+  // one-off noise.
+  const minCount =
+    text.length < 20000 ? 1 : Math.max(2, Math.ceil(text.length / 300000));
 
-  const sorted = [...counts.entries()].sort(
-    (a, b) => b[1] - a[1] || b[0].length - a[0].length,
-  );
-  const kept: { term: string; count: number }[] = [];
-  for (const [term, count] of sorted) {
+  const scored: { term: string; count: number; category: KeywordCategory }[] = [];
+  for (const [term, count] of counts) {
     if (count < minCount) continue;
+    if (
+      term.length >= 2 &&
+      !/^[一-鿿]+$/.test(term) &&
+      !/^[a-zA-Z]+$/.test(term)
+    ) {
+      continue;
+    }
+    // A stopword is grammar, not theme.
+    if (CHINESE_STOPWORDS.has(term)) continue;
+    // A kinship title refers to a person, not to a theme — and the person
+    // is already in the cast.
+    if (TITLE_NOUNS.has(term)) continue;
+    if (COMMON_WORDS.has(term)) continue;
+    if (COMMON_NAME_LIKE_WORDS.has(term)) continue;
+    // A term that ends in a speech verb is a name glued to its own verb
+    // ("玉道" out of "宝玉道"). It belongs to a person, not a theme.
+    if (KEYWORD_VERB_TAIL.has(term[term.length - 1])) continue;
     // Skip fragments of a character name.
     if (exclude.some((name) => name.includes(term) || term.includes(name))) {
       continue;
     }
-    // Skip a term already covered by a longer, more frequent kept term.
+    // A noun that denotes a person belongs to the cast, not to the theme
+    // list — jieba tags 太太/奶奶/丫头 all as 普通名词, so the POS tag
+    // cannot do this.
+    if (PERSON_NOUNS.has(term)) continue;
+    // A measure phrase ("一盏", "那柄", "几张") counts its noun but does
+    // not name it: the object is 茶盏, not 一盏.
+    if (MEASURE_PREFIX.has(term[0])) continue;
+
+    const category = classifyKeyword(term);
+    if (!category) continue;
+    scored.push({ term, count, category });
+  }
+
+  scored.sort((a, b) => b.count - a.count || b.term.length - a.term.length);
+
+  // ── Drop terms already covered by a longer, more frequent kept term.
+  const kept: { term: string; count: number; category: KeywordCategory }[] = [];
+  for (const { term, count, category } of scored) {
     if (kept.some((k) => k.term.includes(term) && k.count >= count)) continue;
-    kept.push({ term, count });
+    kept.push({ term, count, category });
     if (kept.length >= limit) break;
   }
   return kept;
+}
+
+/**
+ * Morphemes that are grammatical HEADS rather than semantic content.
+ *
+ * A word ending in one of these says nothing about what it denotes — the
+ * meaning is carried by the character in front: 扇子 is a fan, 园子 is a
+ * garden, 桌子上 is a table, 园里 is "in the garden". Looking at the head
+ * instead of the tail is what keeps 园里 in the `place` bucket and 桌子上
+ * in the `object` bucket.
+ */
+const GENERIC_HEAD = new Set(
+  "子头儿们家边面里中上下内前后处间所般样只条件张把座".split(""),
+);
+
+/**
+ * Numeral and demonstrative heads that turn a noun into a measure phrase.
+ *
+ * "一盏茶", "那柄剑", "几张纸" — the noun is real but the word as it
+ * stands names a quantity, not a thing. The measure phrase carries no
+ * visual information the bare noun does not already carry.
+ */
+const MEASURE_PREFIX = new Set(
+  "一二三四五六七八九十百千两这那每某几个多少若干整半".split(""),
+);
+
+/**
+ * File a keyword into the bucket an illustrator can act on, or reject it.
+ *
+ * Returns null for words that cannot be drawn and do not frame a scene.
+ */
+export function classifyKeyword(term: string): KeywordCategory | null {
+  if (ABSTRACT_NOUNS.has(term)) return null;
+  const last = term[term.length - 1];
+  // A locative phrase ("in the garden", "on the table") is a position,
+  // not a theme — the scene layer owns the places themselves.
+  if (LOCATIVE_TAIL.has(last)) return null;
+  // The semantic head of the word.
+  //
+  // 子 / 头 / 儿 are grammatical, not semantic: 银子 and 扇子 are named
+  // by the character in FRONT of the suffix, while 嫂子, 法子 and 老子
+  // are named by a character that denotes no thing at all. So the head
+  // is the character before the suffix, and the suffix is ignored.
+  const head = GENERIC_HEAD.has(last) ? term[term.length - 2] ?? "" : last;
+
+  if (CONCRETE_PLACE_SUFFIX.has(head)) return "place";
+  if (NATURE_SUFFIX.has(head)) return "nature";
+  if (CONCRETE_SUFFIX.has(head)) return "object";
+  // Nothing concrete in the word: it survives only if it is a compound
+  // whose head names a practice rather than a thing. 诗社 and 灯谜 are
+  // both two-character compounds whose second half (社, 谜) frames a
+  // gathering, so they are kept as concepts.
+  if (term.length >= 2 && CONCEPT_SUFFIX.has(last)) return "concept";
+  return null;
 }
 
 /** Run the full deterministic analysis over a novel. */
@@ -730,7 +716,45 @@ export function analyze(
     allNames,
   );
 
-  const ranked = rankCharacters(allCounts, chapterIndex).slice(0, 40);
+  /**
+   * A name that occurs only once or twice across a whole novel is almost
+   * always a mis-parse, not a character.
+   *
+   * The frames that produce candidates are noisy: "便向贾蓉" yields 向贾蓉
+   * (3 times), "贾母因" yields 贾母因 (a handful of times). Meanwhile the
+   * real characters occur hundreds of times — 贾母 1616, 宝玉 3832,
+   * 黛玉 1321. The threshold scales with the text so a short story is not
+   * emptied out.
+   */
+  const minMentions = Math.max(2, Math.ceil(text.length / 12000));
+
+  /**
+   * Merge the surface forms that refer to the same person BEFORE ranking.
+   *
+   * 贾宝玉 / 宝玉, 凤姐儿 / 凤姐, 周瑞家的 / 周瑞家 are one person each.
+   * Ranking the raw surface forms separately splits a single character
+   * across several rows, so the cast list under-counts the protagonist
+   * and the relationship graph gets parallel nodes for one person.
+   */
+  const cnCandidates = mergeCharacterAliases(
+    [...cnCounts.keys()],
+    cnCounts,
+  ).filter((c) => c.mentions >= minMentions);
+
+  const mergedCounts = new Map<string, number>();
+  for (const candidate of cnCandidates) mergedCounts.set(candidate.name, candidate.mentions);
+  for (const [name, count] of latinCounts) mergedCounts.set(name, count);
+
+  const mergedIndex = new Map<string, Set<number>>();
+  for (const [name, count] of mergedCounts) {
+    const chaptersHere = new Set<number>();
+    chapters.forEach((chapter, i) => {
+      if (chapterTexts[i].includes(name)) chaptersHere.add(i);
+    });
+    mergedIndex.set(name, chaptersHere);
+  }
+
+  const ranked = rankCharacters(mergedCounts, mergedIndex).slice(0, 40);
 
   const subIndex = subcategoryIndex(taxonomy);
   const entities: Entity[] = [];
@@ -807,14 +831,14 @@ export function analyze(
   const characters = entities.filter((e) => e.category === "character");
   const relationships = extractRelationships(text, characters);
 
-  const keywords = extractKeywords(text, 40, [
-    ...characters.map((c) => c.name),
-    ...entities.map((e) => e.name),
-  ]).map((k) => ({
-    term: k.term,
-    count: k.count,
-    category: "theme" as const,
-  }));
+  // The scene titles are passed as known proper nouns too: they are the
+  // places the segmenter would otherwise cut apart (清风楼 → 清风 + 楼).
+  const keywords = extractKeywords(
+    text,
+    40,
+    [...characters.map((c) => c.name), ...entities.map((e) => e.name)],
+    scenes.map((sc) => sc.title),
+  );
 
   return {
     novelId,

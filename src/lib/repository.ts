@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { getStorage } from "./storage";
 import { analyze } from "./analyze";
 import { extractText } from "./parse";
+import { toSimplified } from "./chinese";
 import { segmentChapters, detectLanguage } from "./segment";
 import { defaultTaxonomy, subcategoryIndex } from "./taxonomy";
 import { assemblePrompt, validatePrompt, PROMPT_TEMPLATES } from "./seedance";
@@ -112,7 +113,11 @@ export async function ingestNovel(
   title?: string,
 ): Promise<NovelRecord> {
   const extracted = await extractText(filename, bytes);
-  const text = extracted.text.trim();
+  // Normalise traditional Chinese to simplified BEFORE anything else looks
+  // at the text. The surname list, the verb-tail list and the scene-suffix
+  // list are all written in simplified, so a traditional novel would
+  // otherwise yield almost no characters and no scenes at all.
+  const text = toSimplified(extracted.text.trim());
   if (!text) {
     throw new Error(
       "Could not extract any text from the uploaded file. If it is a scanned PDF, it needs OCR first.",
