@@ -37,6 +37,7 @@ import {
   ingestNovel,
   listNovels,
   getNovel,
+  deleteNovel,
   applyAgentAnalysis,
   upsertShot,
   buildShotPrompt,
@@ -800,6 +801,21 @@ async function run(): Promise<void> {
       "two novels coexist",
       (await listNovels()).length === 2,
       String((await listNovels()).length),
+    );
+
+    // A novel must be removable again — otherwise the library only grows.
+    const second = (await listNovels()).find((n) => n.title === "第二本");
+    check("the second novel has an id", Boolean(second?.id));
+    const deleted = await deleteNovel(second!.id);
+    check("the novel is deleted", deleted);
+    check(
+      "the deleted novel is gone from the library",
+      (await listNovels()).length === 1,
+      String((await listNovels()).length),
+    );
+    check(
+      "deleting an unknown id reports failure",
+      (await deleteNovel("no-such-id")) === false,
     );
   } finally {
     setStorage(null);

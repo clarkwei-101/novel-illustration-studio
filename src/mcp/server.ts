@@ -8,6 +8,7 @@
  *
  *   upload_novel      ingest a novel file and get the deterministic analysis
  *   list_novels       list every ingested novel
+ *   delete_novel      delete a novel and all its shots
  *   get_context       working material for one novel (chapters, candidates, graph)
  *   get_chapter       full text of one chapter
  *   search_novel      find passages by keyword
@@ -111,6 +112,20 @@ server.tool(
   async () => {
     try {
       return json(await client.get("/api/novels"));
+    } catch (error) {
+      return toolError(error);
+    }
+  },
+);
+
+server.tool(
+  "delete_novel",
+  "Delete a novel and every shot attached to it. Use this when a book was " +
+    "mis-parsed and has to be re-ingested from scratch.",
+  { novelId: z.string() },
+  async ({ novelId }) => {
+    try {
+      return json(await client.delete(`/api/novels/${novelId}`));
     } catch (error) {
       return toolError(error);
     }
@@ -317,6 +332,9 @@ server.tool(
         camera: z.string().optional().describe("Camera language, e.g. '低角度仰拍，缓缓推进至面部特写'."),
         audio: z.string().optional().describe("Audio design, e.g. '音效：雨声、脚步；背景音乐：低沉弦乐'."),
         transition: z.string().optional(),
+        durationSec: z.number().int().min(4).max(15).optional().describe("Overrides the shot's durationSec when assembling the prompt."),
+        mood: z.string().optional().describe("Overrides the shot's mood; appended to the style line."),
+        style: z.string().optional().describe("Overrides the shot's style suffix."),
         segments: z
           .array(
             z.object({

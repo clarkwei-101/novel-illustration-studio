@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getNovel } from "@/lib/repository";
+import { getNovel, deleteNovel } from "@/lib/repository";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,4 +36,30 @@ export async function GET(
       : undefined,
     text: includeText ? record.text : undefined,
   });
+}
+
+/**
+ * DELETE /api/novels/:id — remove a novel and every shot attached to it.
+ *
+ * The library is a working surface, not a write-once log: an agent that
+ * mis-parses a book has to be able to throw the record away and re-ingest
+ * the file. Without this the store only ever grows.
+ */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  try {
+    const removed = await deleteNovel(id);
+    if (!removed) {
+      return NextResponse.json({ error: `No novel with id ${id}` }, { status: 404 });
+    }
+    return NextResponse.json({ deleted: id });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to delete the novel" },
+      { status: 500 },
+    );
+  }
 }
