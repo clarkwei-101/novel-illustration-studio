@@ -25,7 +25,8 @@ through the same API the website uses.
 ```bash
 npm install
 npm run dev          # http://localhost:3111
-npm test             # 77 unit checks
+npm test             # 95 unit checks
+npm run scale        # throughput over a full-length novel
 ```
 
 Without `BLOB_READ_WRITE_TOKEN` the studio stores everything under `data/` on
@@ -128,4 +129,31 @@ src/mcp/server.ts       the MCP stdio server
 src/app/                the website and the REST API
 tests/run.ts            unit suite
 tests/mcp-e2e.ts        MCP protocol end-to-end suite
+tests/fixtures/         紅樓夢 (public domain) — the scale-test corpus
+scripts/scale-test.ts   throughput over a full-length novel
 ```
+
+## Scale test
+
+The unit suite runs on a ~700 character sample, which hides the one thing that
+actually breaks at book length: co-occurrence is where a naive implementation
+turns O(n²). The scale test measures the real pipeline over a full novel.
+
+```bash
+npm run scale            # 紅樓夢 — 906,088 characters, 121 chapters
+npx tsx scripts/scale-test.ts path/to/your-novel.txt
+```
+
+Measured on an M-series Mac:
+
+| | |
+|---|---|
+| characters | 906,088 (121 chapters) |
+| segment | 4 ms |
+| analyze | 1,919 ms |
+| throughput | ~475,000 chars/s |
+| a 200,000-character novel | ~0.4 s |
+
+It reports the top characters, keywords by category and the strongest
+relationships, so a change that quietly degrades entity extraction shows up as
+a changed top-ten list rather than as a slower number.

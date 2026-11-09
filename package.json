@@ -10,7 +10,8 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "tsx tests/run.ts",
-    "mcp": "tsx src/mcp/server.ts"
+    "mcp": "tsx src/mcp/server.ts",
+    "scale": "tsx scripts/scale-test.ts"
   },
   "dependencies": {
     "@node-rs/jieba": "^2.0.4",

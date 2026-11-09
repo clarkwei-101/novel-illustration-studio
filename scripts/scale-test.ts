@@ -6,10 +6,14 @@
  * classic place where a naive implementation turns O(n^2) and a long book
  * takes minutes instead of seconds. This script measures the real thing.
  *
- * Usage: tsx scripts/scale-test.ts [path-to-corpus]
+ * The default corpus is a committed public-domain fixture (紅樓夢, 906,088
+ * characters, 121 chapters). Pass a path to measure a different book:
+ *
+ *   tsx scripts/scale-test.ts [path-to-corpus]
  */
 
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { segmentChapters } from "../src/lib/segment";
 import { analyze } from "../src/lib/analyze";
 import { defaultTaxonomy } from "../src/lib/taxonomy";
@@ -17,8 +21,12 @@ import { toSimplified } from "../src/lib/chinese";
 import { assemblePrompt, validatePrompt } from "../src/lib/seedance";
 import type { Shot } from "../src/lib/types";
 
-const DEFAULT_CORPUS =
-  "/Users/yahweh/Desktop/ai应用社/dse-rag-kb/vault/02_DSE/中國歷史/2013/answer_ans.md";
+const DEFAULT_CORPUS = path.join(
+  process.cwd(),
+  "tests",
+  "fixtures",
+  "hongloumeng.txt",
+);
 
 async function main(): Promise<void> {
   const corpusPath = process.argv[2] ?? DEFAULT_CORPUS;
